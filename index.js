@@ -11,7 +11,7 @@ const client = new Client({
 });
 
 // Environment Variables
-const TOKEN = process.env.TOKEN;
+const TOKEN = 'YOUR_BOT_TOKEN_HERE';
 const WELCOME_CHANNEL_ID = '1434722989387022367';
 const REACTION_CHANNEL_ID = '1434722989387022370';
 
