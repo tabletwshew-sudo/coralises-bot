@@ -1,5 +1,17 @@
-// --- Existing imports ---
-const { Client, GatewayIntentBits, Partials, ActionRowBuilder, ButtonBuilder, ButtonStyle, Events, SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
+// ===== IMPORTS =====
+const {
+  Client,
+  GatewayIntentBits,
+  Partials,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  Events,
+  SlashCommandBuilder,
+  PermissionFlagsBits,
+  EmbedBuilder
+} = require('discord.js');
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -11,15 +23,19 @@ const client = new Client({
   partials: [Partials.Message, Partials.Channel, Partials.Reaction]
 });
 
-// --- Environment Variables ---
+// ===== CONFIG =====
 const TOKEN = 'YOUR_BOT_TOKEN_HERE';
+
+// CHANNELS
 const WELCOME_CHANNEL_ID = '1434722989387022367';
 const REACTION_CHANNEL_ID = '1434722989387022370';
 const PANEL_CHANNEL_ID = '1434722990054051957'; // Ticket panel channel
 const TICKET_CATEGORY_ID = '1434722990054051957'; // Ticket category
-const SUPPORT_ROLE_ID = '1434722988602822762'; // Role that can view tickets
 
-// --- Emoji → Role mapping ---
+// ROLES
+const SUPPORT_ROLE_ID = '1434722988602822762';
+
+// ===== REACTION ROLES CONFIG =====
 const reactionRoles = {
   '🎉': '1436243475107414087', // event
   '🔔': '1436179486356934717', // update
@@ -28,64 +44,101 @@ const reactionRoles = {
   '🎥': '1434722988602822761', // live
 };
 
-// --- Active tickets store ---
+// ===== ACTIVE TICKET TRACKER =====
 const activeTickets = new Map();
 let lastTicketNumber = 0;
 
-// ================= WELCOME EMBED =================
+// ===== WELCOME MESSAGE =====
 client.on('guildMemberAdd', async member => {
   if (member.user.bot) return;
-
   const channel = member.guild.channels.cache.get(WELCOME_CHANNEL_ID);
   if (!channel) return;
 
   const embed = new EmbedBuilder()
     .setDescription(
       `**Welcome ${member} to Coralises Network | OCE!**\n\n` +
-      `📕 Make sure to read ⁠https://discord.com/channels/1434722988602822758/1434722989387022368.\n\n` +
-      `❗ Check out ⁠https://discord.com/channels/1434722988602822758/1434722989387022370 to get your roles.\n\n` +
-      `🎫 If you have any questions or concerns, open a support ticket here: ⁠https://discord.com/channels/1434722988602822758/1434722989571575984.`
+      `📕 Make sure to read the rules.\n\n` +
+      `❗ Grab your roles in the reaction role channel.\n\n` +
+      `🎫 Need help? Open a support ticket anytime!`
     )
     .setColor(0x00AEFF);
+
   await channel.send({ embeds: [embed] });
 });
 
-// ================= REACTION ROLES =================
+// ===== REACTION ROLES =====
 client.once('ready', async () => {
   console.log(`✅ Logged in as ${client.user.tag}!`);
 
+  // --- REACTION ROLES SETUP ---
   const channel = client.channels.cache.get(REACTION_CHANNEL_ID);
-  if (!channel) return console.log("❌ Reaction roles channel not found");
+  if (channel) {
+    const messages = await channel.messages.fetch({ limit: 50 });
+    messages.forEach(msg => {
+      if (msg.author.id === client.user.id) msg.delete().catch(() => {});
+    });
 
-  // Delete previous reaction role messages
-  const messages = await channel.messages.fetch({ limit: 50 });
-  messages.forEach(msg => {
-    if (msg.author.id === client.user.id) msg.delete().catch(() => {});
-  });
+    const embed = new EmbedBuilder()
+      .setTitle('Choose Your Pings!')
+      .setDescription(
+        `React below to get your pings:\n\n` +
+        `🎉 → Event pings\n\n` +
+        `🔔 → Update pings\n\n` +
+        `👀 → Sneak peek pings\n\n` +
+        `📹 → Video pings\n\n` +
+        `🎥 → Live stream pings`
+      )
+      .setColor(0x00AEFF)
+      .setFooter({ text: 'Coralises Network | Reaction Roles' });
 
-  const embed = new EmbedBuilder()
-    .setTitle('Choose Your Pings!')
-    .setDescription(
-      `React below to get your pings:\n\n` +
-      `🎉 → Event pings\n` +
-      `🔔 → Update pings\n` +
-      `👀 → Sneak peek pings\n` +
-      `📹 → Video pings\n` +
-      `🎥 → Live stream pings`
-    )
-    .setColor(0x00AEFF)
-    .setFooter({ text: 'Coralises Network | Reaction Roles' });
+    const message = await channel.send({ embeds: [embed] });
+    for (const emoji of Object.keys(reactionRoles)) await message.react(emoji);
 
-  const message = await channel.send({ embeds: [embed] });
-
-  for (const emoji of Object.keys(reactionRoles)) {
-    await message.react(emoji);
+    console.log('✅ Reaction roles setup done!');
+  } else {
+    console.log('⚠️ Reaction roles channel not found.');
   }
 
-  console.log("✅ Reaction roles message sent with reactions!");
+  // --- AUTO SEND TICKET PANEL ---
+  const panelChannel = client.channels.cache.get(PANEL_CHANNEL_ID);
+  if (panelChannel) {
+    const messages = await panelChannel.messages.fetch({ limit: 10 });
+    messages.forEach(msg => {
+      if (msg.author.id === client.user.id) msg.delete().catch(() => {});
+    });
+
+    const embed = new EmbedBuilder()
+      .setTitle('🎫 Coralises Support')
+      .setDescription('Need help? Choose your support type below:')
+      .setColor(0x00BFFF);
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('billing').setLabel('Billing Support').setStyle(ButtonStyle.Primary).setEmoji('💰'),
+      new ButtonBuilder().setCustomId('support').setLabel('Support').setStyle(ButtonStyle.Success).setEmoji('🛠️'),
+      new ButtonBuilder().setCustomId('report').setLabel('Report').setStyle(ButtonStyle.Danger).setEmoji('🚨')
+    );
+
+    await panelChannel.send({ embeds: [embed], components: [row] });
+    console.log('🎟️ Ticket panel sent!');
+  } else {
+    console.log('⚠️ Ticket panel channel not found.');
+  }
+
+  // --- REGISTER /add COMMAND ---
+  const guild = client.guilds.cache.first();
+  if (guild) {
+    const data = new SlashCommandBuilder()
+      .setName('add')
+      .setDescription('Add a user to the current ticket')
+      .addUserOption(option => option.setName('user').setDescription('User to add').setRequired(true))
+      .toJSON();
+
+    await guild.commands.create(data);
+    console.log('✅ /add command registered!');
+  }
 });
 
-// --- ADD/REMOVE ROLES ON REACTION ---
+// ===== REACTION ROLE HANDLERS =====
 client.on('messageReactionAdd', async (reaction, user) => {
   if (user.bot) return;
   if (reaction.partial) await reaction.fetch();
@@ -93,7 +146,6 @@ client.on('messageReactionAdd', async (reaction, user) => {
 
   const roleId = reactionRoles[reaction.emoji.name];
   if (!roleId) return;
-
   const member = await reaction.message.guild.members.fetch(user.id);
   await member.roles.add(roleId).catch(console.error);
 });
@@ -105,51 +157,35 @@ client.on('messageReactionRemove', async (reaction, user) => {
 
   const roleId = reactionRoles[reaction.emoji.name];
   if (!roleId) return;
-
   const member = await reaction.message.guild.members.fetch(user.id);
   await member.roles.remove(roleId).catch(console.error);
 });
 
-// ================= TICKETS SYSTEM =================
-
-// Send ticket panel
-client.on('messageCreate', async message => {
-  if(message.content === '!ticketpanel') {
-    if(message.channel.id !== PANEL_CHANNEL_ID) return;
-
-    const embed = new EmbedBuilder()
-      .setTitle('🎫 Open a Ticket')
-      .setDescription('Click a button below to open a ticket')
-      .setColor(0x00BFFF);
-
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('billing').setLabel('Billing Support').setStyle(ButtonStyle.Primary).setEmoji('💰'),
-      new ButtonBuilder().setCustomId('support').setLabel('Support').setStyle(ButtonStyle.Success).setEmoji('🛠️'),
-      new ButtonBuilder().setCustomId('report').setLabel('Report').setStyle(ButtonStyle.Danger).setEmoji('🚨')
-    );
-
-    await message.channel.send({ embeds: [embed], components: [row] });
-  }
-});
-
-// Handle ticket button clicks
+// ===== TICKET BUTTON HANDLERS =====
 client.on(Events.InteractionCreate, async interaction => {
-  if(!interaction.isButton()) return;
+  if (!interaction.isButton()) return;
 
   const userId = interaction.user.id;
+  const type = interaction.customId;
 
-  if(activeTickets.has(userId)) {
+  // Close ticket
+  if (type === 'close_ticket') {
+    const channel = interaction.channel;
+    await channel.delete().catch(() => {});
+    activeTickets.forEach((val, key) => {
+      if (val === channel.id) activeTickets.delete(key);
+    });
+    return;
+  }
+
+  // Open ticket
+  if (activeTickets.has(userId)) {
     return interaction.reply({ content: '❌ You already have an open ticket!', ephemeral: true });
   }
 
-  const type = interaction.customId;
-
-  // Increment ticket number
   lastTicketNumber++;
-  const channelName = `ticket-${lastTicketNumber}`;
-
   const ticketChannel = await interaction.guild.channels.create({
-    name: channelName,
+    name: `ticket-${lastTicketNumber}`,
     type: 0,
     parent: TICKET_CATEGORY_ID,
     permissionOverwrites: [
@@ -161,62 +197,47 @@ client.on(Events.InteractionCreate, async interaction => {
 
   activeTickets.set(userId, ticketChannel.id);
 
-  const ticketEmbed = new EmbedBuilder()
-    .setTitle(`🎫 Ticket Opened: ${type.charAt(0).toUpperCase() + type.slice(1)}`)
-    .setDescription(`Thank you for contacting support.\n-\nPlease describe your issue and wait for a response.\n\nPlease do not ping anyone`)
+  const embed = new EmbedBuilder()
+    .setTitle(`🎫 Ticket: ${type.charAt(0).toUpperCase() + type.slice(1)}`)
+    .setDescription(
+      `Thank you for contacting support.\n\n` +
+      `Please describe your issue and wait for a response.\n\n` +
+      `⚠️ Do not ping anyone.`
+    )
     .setColor(0x00BFFF);
 
-  const closeRow = new ActionRowBuilder().addComponents(
+  const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('close_ticket').setLabel('Close Ticket').setStyle(ButtonStyle.Danger).setEmoji('🔒')
   );
 
-  await ticketChannel.send({ content: `<@${userId}>`, embeds: [ticketEmbed], components: [closeRow] });
+  await ticketChannel.send({
+    content: `<@${userId}> <@&${SUPPORT_ROLE_ID}>`,
+    embeds: [embed],
+    components: [row]
+  });
 
-  await interaction.reply({ content: `✅ Your ticket has been created: ${ticketChannel}`, ephemeral: true });
+  await interaction.reply({ content: `✅ Ticket created: ${ticketChannel}`, ephemeral: true });
 });
 
-// Close ticket
+// ===== /ADD COMMAND =====
 client.on(Events.InteractionCreate, async interaction => {
-  if(!interaction.isButton()) return;
+  if (!interaction.isChatInputCommand()) return;
+  if (interaction.commandName !== 'add') return;
 
-  if(interaction.customId === 'close_ticket') {
-    const channel = interaction.channel;
-    await channel.delete();
-    activeTickets.forEach((val, key) => {
-      if(val === channel.id) activeTickets.delete(key);
-    });
+  const user = interaction.options.getUser('user');
+  const channel = interaction.channel;
+  if (!channel.name.startsWith('ticket-')) {
+    return interaction.reply({ content: '❌ You can only use this inside a ticket.', ephemeral: true });
   }
+
+  await channel.permissionOverwrites.edit(user.id, {
+    ViewChannel: true,
+    SendMessages: true,
+    ReadMessageHistory: true
+  });
+
+  await interaction.reply({ content: `✅ Added ${user.tag} to the ticket.`, ephemeral: true });
 });
 
-// /add command
-client.on(Events.InteractionCreate, async interaction => {
-  if(!interaction.isChatInputCommand()) return;
-
-  if(interaction.commandName === 'add') {
-    const user = interaction.options.getUser('user');
-    const channel = interaction.channel;
-
-    const member = await interaction.guild.members.fetch(interaction.user.id);
-    if(!channel.name.startsWith('ticket-') || (!member.roles.cache.has(SUPPORT_ROLE_ID) && interaction.user.id !== channel.permissionOverwrites.cache.find(o => o.allow.has(PermissionFlagsBits.ViewChannel))?.id)) {
-      return interaction.reply({ content: '❌ You cannot use this command here.', ephemeral: true });
-    }
-
-    await channel.permissionOverwrites.edit(user.id, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true });
-    await interaction.reply({ content: `✅ Added ${user.tag} to the ticket.`, ephemeral: true });
-  }
-});
-
-// Register slash command
-client.on('ready', async () => {
-  const data = new SlashCommandBuilder()
-    .setName('add')
-    .setDescription('Add a user to the ticket')
-    .addUserOption(option => option.setName('user').setDescription('User to add').setRequired(true))
-    .toJSON();
-
-  const guild = client.guilds.cache.first();
-  await guild.commands.create(data);
-});
-
-// ================= LOGIN =================
+// ===== LOGIN =====
 client.login(TOKEN);
